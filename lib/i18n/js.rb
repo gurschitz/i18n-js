@@ -30,10 +30,10 @@ module I18n
 
     # Export translations to JavaScript, considering settings
     # from configuration file
-    def self.export
+    def self.export(transform = nil)
       export_i18n_js
 
-      translation_segments.each(&:save!)
+      translation_segments(transform).each(&:save!)
     end
 
     def self.segment_for_scope(scope, exceptions)
@@ -44,7 +44,7 @@ module I18n
       end
     end
 
-    def self.configured_segments
+    def self.configured_segments(transform = nil)
       config[:translations].inject([]) do |segments, options_hash|
         options_hash_with_symbol_keys = Private::HashWithSymbolKeys.new(options_hash)
         file = options_hash_with_symbol_keys[:file]
@@ -55,10 +55,19 @@ module I18n
 
         merge_with_fallbacks!(result) if fallbacks
 
-        unless result.empty?
+
+        if !transform.blank? && transform.respond_to?(:call) && result.is_a?(Hash)
+          final_translations = transform.call(result)
+        else
+          final_translations = result
+        end
+
+        puts "CONFIGURED_SEGMENTS final_translations #{final_translations}"
+
+        unless final_translations.empty?
           segments << Segment.new(
             file,
-            result,
+            final_translations,
             extract_segment_options(options_hash_with_symbol_keys),
           )
         end
@@ -88,11 +97,11 @@ module I18n
       translations
     end
 
-    def self.translation_segments
+    def self.translation_segments(transform = nil)
       if config? && config[:translations]
-        configured_segments
+        configured_segments(transform)
       else
-        [Segment.new("#{DEFAULT_EXPORT_DIR_PATH}/translations.js", translations)]
+        [Segment.new("#{DEFAULT_EXPORT_DIR_PATH}/translations.js", translations(transform))]
       end
     end
 
@@ -159,15 +168,21 @@ module I18n
     end
 
     # Initialize and return translations
-    def self.translations
+    def self.translations(transform = nil)
       ::I18n.backend.instance_eval do
         init_translations unless initialized?
+
+        if !transform.blank? && transform.respond_to?(:call) && translations.is_a?(Hash)
+          final_translations = transform.call(translations)
+        else
+          final_translations = translations
+        end
         # When activesupport is absent,
         # the core extension (`#slice`) from `i18n` gem will be used instead
         # And it's causing errors (at least in test)
         #
         # So the input is wrapped by our class for better `#slice`
-        Private::HashWithSymbolKeys.new(translations).
+        Private::HashWithSymbolKeys.new(final_translations).
           slice(*::I18n.available_locales).
           to_h
       end

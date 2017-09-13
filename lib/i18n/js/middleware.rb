@@ -3,14 +3,20 @@ require "fileutils"
 module I18n
   module JS
     class Middleware
-      def initialize(app)
+      def initialize(app, exclude_paths = [], transform_only = false)
         @app = app
+        @exclude_paths = exclude_paths
+        @transform_only = transform_only
         clear_cache
       end
 
       def call(env)
         @cache = nil
-        verify_locale_files!
+        transform = env['transform_translation']
+        unless @exclude_paths.include?(env['REQUEST_PATH']) || (@transform_only && transform.nil?)
+          puts env['REQUEST_PATH']
+          verify_locale_files!(transform)
+        end
         @app.call(env)
       end
 
@@ -58,7 +64,7 @@ module I18n
       # # Translations and cache size are different (files were removed/added)
       # # Translation file has been updated
       #
-      def verify_locale_files!
+      def verify_locale_files!(transform = nil)
         valid_cache = []
         new_cache = {}
 
@@ -75,7 +81,7 @@ module I18n
 
         save_cache(new_cache)
 
-        ::I18n::JS.export
+        ::I18n::JS.export(transform)
       end
     end
   end
